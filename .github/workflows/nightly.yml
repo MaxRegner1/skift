@@ -34,27 +34,20 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Docker
-        uses: docker/setup-buildx-action@v2
 
-      - name: Cache Docker layers
-        uses: actions/cache@v3
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-
 
-      - name: Build and push Docker image
-        run: |
-          docker build -t my-freebsd-image:latest .
-          docker run my-freebsd-image:latest sh -c "
-            ./skift.sh tools setup &&
-            ./skift.sh tools doctor &&
-            ./skift.sh model install &&
-            ./skift.sh image build --format=hdd --props:branch=nightly --dist &&
-            ./meta/scripts/dump-body.sh meta/release/nightly.md >> \$GITHUB_OUTPUT
-          "
+      - name: Set up the build environment
+        run: ./skift.sh tools setup && ./skift.sh tools doctor
+
+      - name: Download third-party dependencies
+        run: ./skift.sh model install
+
+      - name: Build System Image (efi-x86_64)
+        run: ./skift.sh image build --format=hdd --props:branch=nightly --dist
+
+      - name: Read release.md and use it as a body of new release
+        id: read_release
+        run: ./meta/scripts/dump-body.sh meta/release/nightly.md >> $GITHUB_OUTPUT
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
