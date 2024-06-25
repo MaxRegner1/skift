@@ -22,9 +22,9 @@ jobs:
         continue-on-error: true
         name: Check latest commit is less than a day
         if: ${{ github.event_name == 'schedule' }}
-        run: test -z $(git rev-list  --after="24 hours"  ${{ github.sha }}) && echo "::set-output name=should_run::false"
+        run: test -z $(git rev-list --after="24 hours" ${{ github.sha }}) && echo "::set-output name=should_run::false"
 
-  ubuntu:
+  build:
     runs-on: ubuntu-latest
     needs: check_date
     if: ${{ needs.check_date.outputs.should_run != 'false' }}
@@ -34,23 +34,27 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v3
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v2
+
+      - name: Cache Docker layers
+        uses: actions/cache@v3
         with:
-            python-version: '3.11'
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
 
-      - name: Set up the build environment
-        run: ./skift.sh tools setup && ./skift.sh tools doctor
-
-      - name: Download third-party dependencies
-        run: ./skift.sh model install
-
-      - name: Build System Image (efi-x86_64)
-        run: ./skift.sh image build --format=hdd --props:branch=nightly --dist
-
-      - name: Read release.md and use it as a body of new release
-        id: read_release
-        run: ./meta/scripts/dump-body.sh meta/release/nightly.md >> $GITHUB_OUTPUT
+      - name: Build and push Docker image
+        run: |
+          docker build -t my-freebsd-image:latest .
+          docker run my-freebsd-image:latest sh -c "
+            ./skift.sh tools setup &&
+            ./skift.sh tools doctor &&
+            ./skift.sh model install &&
+            ./skift.sh image build --format=hdd --props:branch=nightly --dist &&
+            ./meta/scripts/dump-body.sh meta/release/nightly.md >> \$GITHUB_OUTPUT
+          "
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
